@@ -4,6 +4,7 @@ import rospy
 import inspect
 import time
 from nav_msgs.msg import Path, OccupancyGrid
+from nav_msgs.srv import GetPlan
 from geometry_msgs.msg import Twist, Pose, PoseStamped, PoseWithCovarianceStamped
 from std_msgs.msg import Empty
 
@@ -233,6 +234,24 @@ def get_grid_from_pose(pose):
   y = pose.position.x / grid_res
   return (int(x), int(y))
 
+def get_waypoints(path):
+  """
+    Simplify a path down into just the turns.
+  """
+  waypoints = [path[0]]
+  cur = path[1]
+  prev_diff = (cur[0] - path[0][0], cur[1] - path[0][1])
+  for i in range(1, len(path) - 1):
+    cur = path[i]
+    new = path[i + 1]
+    diff = (new[0] - cur[0], new[1] - cur[1])
+    if diff != prev_diff:
+      waypoints.append(cur)
+    prev_diff = diff
+
+  waypoints.append(path[-1])
+  return waypoints
+
 def pub_path(path):
   """
     Takes a list of nodes and publishes the path to the appropriate topic.
@@ -302,9 +321,8 @@ def do_a_star(grid, start, goal):
       neighbor.set_g(tentative_g_score)
 
   viz_data(grid, closed)
-  if retval: pub_path(retval)
+  if retval: pub_path(get_waypoints(retval))
   viz_data(grid, closed)
-  rospy.sleep(rospy.Duration(5, 0))
 
   return retval
 
@@ -319,8 +337,8 @@ def viz_data(grid, closed):
   occ_data = [0] * (occ_msg.info.width * occ_msg.info.height)
   width = occ_msg.info.width
   height = occ_msg.info.height
-  occ_data[width * start.x + start.y] = 100
-  occ_data[width * goal.x + goal.y] = 100
+  #occ_data[width * start.x + start.y] = 100
+  #occ_data[width * goal.x + goal.y] = 100
   top_cost = 0
   for node in closed:
     if node.g_cost > top_cost: top_cost = node.g_cost
@@ -331,11 +349,27 @@ def viz_data(grid, closed):
     occ_data[width * node.x + node.y] = cost
   occ_msg.data = occ_data
   pub.publish(occ_msg)
-  rospy.sleep(rospy.Duration(5, 0))
 
 
 def do_stuff(empty):
   debug(repr(do_a_star(grid, start, goal)))
+
+def astar_serv(info):
+  start = info.start
+  if grid: start = grid.get_node(get_grid_from_pose(start.pose))
+  goal = info.goal
+  if grid: goal = grid.get_node(get_grid_from_pose(goal.pose))
+  path = get_waypoints(do_a_star(grid, start, goal))
+  msg = Path()
+  msg.header.frame_id = "map"
+  for pair in path:
+    pose = PoseStamped()
+    pose.header.frame_id = "map"
+    pose.pose.orientation.w = 1
+    pose.pose.position.x = (pair[1] + 0.5) * grid_res
+    pose.pose.position.y = (pair[0] + 0.5) * grid_res
+    msg.poses.append(pose)
+  return msg
 
 start = None
 def get_start(start_pose):
@@ -348,7 +382,7 @@ def get_goal(goal_pose):
   global goal
   if grid: goal = grid.get_node(get_grid_from_pose(goal_pose.pose))
   debug(repr(goal))
-  do_stuff(1)
+  #do_stuff(1)
 
 def reconstruct_path(current):
   total_path = [(current.x, current.y)]
@@ -370,4 +404,5 @@ if __name__ == '__main__':
   rospy.Subscriber('/foobar', Empty, do_stuff, queue_size=1)
   pub = rospy.Publisher('/closed_nodes', OccupancyGrid, queue_size=10)
   path_pub = rospy.Publisher('/astar_path', Path, queue_size=10)
+  path_serv = rospy.Service('astar', GetPlan, astar_serv)
   rospy.spin()
