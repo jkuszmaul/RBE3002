@@ -207,6 +207,24 @@ class Map(object):
     debug(repr(xy))
     return self.nodelist[xy[0]][xy[1]]
 
+def get_surround(data, node, dist, width, height):
+  x = node[0]
+  y = node[1]
+  startx = x - dist
+  startx = 0 if startx < 0 else startx
+  endx = x + dist
+  endx = height-1 if endx >= height else endx
+  starty = y - dist
+  starty = 0 if starty < 0 else starty
+  endy = y + dist
+  endy = width-1 if endy >= width else endy
+  cells = []
+  for i in range(startx, endx + 1):
+    for j in range(starty, endy + 1):
+      if data[i * width + j]:
+        return 1
+  return 0
+
 grid = None
 grid_res = None
 def convert_map(rosmap):
@@ -218,11 +236,20 @@ def convert_map(rosmap):
   global grid
   global grid_res
   debug("converting map")
-  grid = Map(rosmap.info.width, rosmap.info.height, rosmap.data)
+  grid_res = rosmap.info.resolution
+  # Go through and put clearance around the walls.
+  data = rosmap.data
+  new_data = []
+  diff = int((.23 / 2) / grid_res) + 1 # Add one to provide buffer
+  width = rosmap.info.width
+  height = rosmap.info.height
+  for x in xrange(height):
+    for y in xrange(width):
+      new_data.append(get_surround(data, (x, y), diff, width, height))
+  grid = Map(rosmap.info.width, rosmap.info.height, new_data)
   debug("map converted")
   # TODO: Convert between absolute coordinates and map.
   origin = rosmap.info.origin # Pose msg
-  grid_res = rosmap.info.resolution
 
 def get_grid_from_pose(pose):
   """
@@ -238,6 +265,8 @@ def get_waypoints(path):
   """
     Simplify a path down into just the turns.
   """
+  if len(path) < 2:
+    return path
   waypoints = [path[0]]
   cur = path[1]
   prev_diff = (cur[0] - path[0][0], cur[1] - path[0][1])
@@ -281,9 +310,22 @@ def print_queue():
   #print totalstr
   debug(repr(i))
 
+def get_turn_cost(start, neighbor):
+  if start.parent == None:
+    return 0
+  prev = start.parent
+  start_diff = (start.x - prev.x, start.y - prev.y)
+  next_diff = (neighbor.x - start.x, neighbor.y - start.y)
+  if start_diff == next_diff:
+    return 0
+  else:
+    return 3
+
 def do_a_star(grid, start, goal):
   # Insert standard algorithm (see class notes, etc.).
   # Return appropriate path.
+  if start == goal:
+    return [(start.x, start.y)]
   global frontier
   grid.clear()
   frontier = PriorityQueue(start)
@@ -308,7 +350,7 @@ def do_a_star(grid, start, goal):
       #print_queue()
       if neighbor in closed:
         continue    # Ignore the neighbor which is already evaluated.
-      tentative_g_score = current.g_cost + current.dist(neighbor)
+      tentative_g_score = current.g_cost + current.dist(neighbor) + get_turn_cost(current, neighbor)
       #if neighbor.cheaper == None and neighbor.expense == None: # Discover a new node
       neighbor.set_h(heuristic(neighbor, goal))
       #print_queue()
@@ -339,7 +381,7 @@ def viz_data(grid, closed):
   height = occ_msg.info.height
   #occ_data[width * start.x + start.y] = 100
   #occ_data[width * goal.x + goal.y] = 100
-  top_cost = 0
+  top_cost = 1
   for node in closed:
     if node.g_cost > top_cost: top_cost = node.g_cost
   for node in closed:

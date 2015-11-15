@@ -38,6 +38,7 @@ if __name__ == '__main__':
   do_astar = rospy.ServiceProxy('astar', GetPlan)
   rospy.Subscriber('/move_base_simple/goal', PoseStamped, get_goal, queue_size=10)
   path_pub = rospy.Publisher('/astar_continuous_path', Path, queue_size=10)
+  go_pub = rospy.Publisher('/waypoint', PoseStamped, queue_size=10)
 
   rospy.sleep(rospy.Duration(1, 0))
   # Periodically update the pose information.
@@ -53,4 +54,6 @@ if __name__ == '__main__':
       path = do_astar(pose, goal, 0.0).plan
     except Exception as exc:
       print exc
-    if path: path_pub.publish(path)
+    if path:
+      path_pub.publish(path)
+      go_pub.publish(path.poses[-2])
