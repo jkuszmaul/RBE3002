@@ -2,8 +2,9 @@
 import math
 import rospy
 import inspect
+import time
 from nav_msgs.msg import Path, OccupancyGrid
-from geometry_msgs.msg import Twist, PoseStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import Twist, Pose, PoseStamped, PoseWithCovarianceStamped
 from std_msgs.msg import Empty
 
 def debug(string):
@@ -11,6 +12,7 @@ def debug(string):
     Prints the name of the calling function and the line on which this was
     called, along with whatever string is passed.
   """
+  return
   func = inspect.stack()[1]
   func_name = func[3]
   func_line = repr(func[2])
@@ -45,6 +47,7 @@ class PriorityQueue(object):
       the queue.
       If not already in the queue, node is inserted.
     """
+    debug(repr(node))
     current = self.tail
     if node.cheaper == None and node.expense == None:
       if self.head == None:
@@ -67,14 +70,21 @@ class PriorityQueue(object):
     # Actually insert node into list.
     if node != current:
       debug(repr(node) + "; " + repr(current))
+      # Tie up loose ends
       if (node == self.tail):
         self.tail = node.cheaper
-      current.cheaper = node
+      if node.expense:
+        node.expense.cheaper = node.cheaper
+      if node.cheaper:
+        node.cheaper.expense = node.expense
+
+      # Re-insert node
       node.cheaper = current.cheaper
+      current.cheaper = node
       node.expense = current
-    if node.cheaper: node.cheaper.expense = node
-    else:
-      self.head = node
+      if node.cheaper: node.cheaper.expense = node
+      else:
+        self.head = node
 
 class Node(object):
   """
@@ -157,12 +167,30 @@ class Map(object):
           continue
         new_node = Node(i, j)
         # Add neighbor nodes that already exist.
+        up_left = True # Whether or not to go for the node to the up-left.
+        up_right = True # Whether or not to go for the node to the up-right.
         if i and self.nodelist[i - 1][j]:
           new_node.add_neighbor(self.nodelist[i - 1][j])
           self.nodelist[i-1][j].add_neighbor(new_node)
+        else:
+          # don't cut corners.
+          up_left = False
+          up_right = False
         if j and self.nodelist[i][j - 1]:
           new_node.add_neighbor(self.nodelist[i][j - 1])
           self.nodelist[i][j - 1].add_neighbor(new_node)
+        else:
+          # don't cut corners
+          up_left = False
+        # Check to see of the node to the right exists:
+        if (occupancy_arr[x * i + j + 1] and (j + 1) < y) or (j + 1) >= y:
+          up_right = False
+        if up_left and self.nodelist[i - 1][j - 1]:
+          new_node.add_neighbor(self.nodelist[i - 1][j - 1])
+          self.nodelist[i - 1][j - 1].add_neighbor(new_node)
+        if up_right and self.nodelist[i - 1][j + 1]:
+          new_node.add_neighbor(self.nodelist[i - 1][j + 1])
+          self.nodelist[i - 1][j + 1].add_neighbor(new_node)
         self.nodelist[i].append(new_node)
     #debug(repr(self.nodelist))
 
@@ -209,6 +237,17 @@ def pub_path(path):
   """
     Takes a list of nodes and publishes the path to the appropriate topic.
   """
+  global path_pub
+  msg = Path()
+  msg.header.frame_id = "map"
+  for pair in path:
+    pose = PoseStamped()
+    pose.header.frame_id = "map"
+    pose.pose.orientation.w = 1
+    pose.pose.position.x = (pair[1] + 0.5) * grid_res
+    pose.pose.position.y = (pair[0] + 0.5) * grid_res
+    msg.poses.append(pose)
+  path_pub.publish(msg)
 
 def print_queue():
   global frontier
@@ -217,8 +256,8 @@ def print_queue():
   i = 0
   while node:
     i += 1
-    #totalstr += repr(node)
-    #totalstr += "; "
+    totalstr += repr(node)
+    totalstr += "; "
     node = node.cheaper
   #print totalstr
   debug(repr(i))
@@ -238,21 +277,22 @@ def do_a_star(grid, start, goal):
   retval = False
   while not frontier.empty():
     current = frontier.get()
-    debug("Current: " + repr(current))
+    #debug("Current: " + repr(current))
     if current == goal:
       retval = reconstruct_path(goal)
       break
 
     closed.add(current)
+
     for neighbor in current.adj:
-      debug("Neighbor: " + repr(neighbor))
-      print_queue()
+      #debug("Neighbor: " + repr(neighbor))
+      #print_queue()
       if neighbor in closed:
         continue    # Ignore the neighbor which is already evaluated.
       tentative_g_score = current.g_cost + current.dist(neighbor)
       #if neighbor.cheaper == None and neighbor.expense == None: # Discover a new node
       neighbor.set_h(heuristic(neighbor, goal))
-      print_queue()
+      #print_queue()
       if tentative_g_score >= neighbor.g_cost:
         continue    # This is not a better path.
 
@@ -261,23 +301,38 @@ def do_a_star(grid, start, goal):
       neighbor.parent = current
       neighbor.set_g(tentative_g_score)
 
+  viz_data(grid, closed)
+  if retval: pub_path(retval)
+  viz_data(grid, closed)
+  rospy.sleep(rospy.Duration(5, 0))
+
+  return retval
+
+def viz_data(grid, closed):
   # Visualize DATA
   global pub
   occ_msg = OccupancyGrid()
-  occ_msg.info.resolution = 0.3
-  occ_msg.info.width = 37
-  occ_msg.info.height = 37
+  occ_msg.info.resolution = grid_res
+  occ_msg.info.width = len(grid.nodelist)
+  occ_msg.info.height = len(grid.nodelist[0])
   occ_msg.info.origin.orientation.w = 1
-  occ_data = [0] * (len(grid.nodelist) * len(grid.nodelist[0]))
-  occ_data[37 * start.x + start.y] = 100
-  occ_data[37 * goal.x + goal.y] = 100
+  occ_data = [0] * (occ_msg.info.width * occ_msg.info.height)
+  width = occ_msg.info.width
+  height = occ_msg.info.height
+  occ_data[width * start.x + start.y] = 100
+  occ_data[width * goal.x + goal.y] = 100
+  top_cost = 0
   for node in closed:
-    occ_data[37 * node.x + node.y] = node.h_cost + node.g_cost
+    if node.g_cost > top_cost: top_cost = node.g_cost
+  for node in closed:
+    cost = node.g_cost / top_cost
+    cost *= 225
+    if cost > 99: cost -= 228
+    occ_data[width * node.x + node.y] = cost
   occ_msg.data = occ_data
   pub.publish(occ_msg)
-  rospy.sleep(rospy.Duration(10, 0))
+  rospy.sleep(rospy.Duration(5, 0))
 
-  return retval
 
 def do_stuff(empty):
   debug(repr(do_a_star(grid, start, goal)))
@@ -293,6 +348,7 @@ def get_goal(goal_pose):
   global goal
   if grid: goal = grid.get_node(get_grid_from_pose(goal_pose.pose))
   debug(repr(goal))
+  do_stuff(1)
 
 def reconstruct_path(current):
   total_path = [(current.x, current.y)]
@@ -306,10 +362,12 @@ def heuristic(start, goal):
 
 if __name__ == '__main__':
   global pub
+  global path_pub
   rospy.init_node('astar')
   rospy.Subscriber('/map', OccupancyGrid, convert_map, queue_size=10)
   rospy.Subscriber('/move_base_simple/goal', PoseStamped, get_goal, queue_size=10)
   rospy.Subscriber('/initialpose', PoseWithCovarianceStamped, get_start, queue_size=10)
   rospy.Subscriber('/foobar', Empty, do_stuff, queue_size=1)
   pub = rospy.Publisher('/closed_nodes', OccupancyGrid, queue_size=10)
+  path_pub = rospy.Publisher('/astar_path', Path, queue_size=10)
   rospy.spin()
