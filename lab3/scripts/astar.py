@@ -1,29 +1,105 @@
 #!/usr/bin/python
 import math
-from Queue import PriorityQueue
+import rospy
+import inspect
 from nav_msgs.msg import Path, OccupancyGrid
-from geometry_msgs.msg import Twist, PoseStamped, Pose
+from geometry_msgs.msg import Twist, PoseStamped, PoseWithCovarianceStamped
+from std_msgs.msg import Empty
+
+def debug(string):
+  """
+    Prints the name of the calling function and the line on which this was
+    called, along with whatever string is passed.
+  """
+  func = inspect.stack()[1]
+  func_name = func[3]
+  func_line = repr(func[2])
+  print func_name + ":" + func_line + ": " + string
+
+class PriorityQueue(object):
+  """
+    Class for managing the priority queue of nodes.
+  """
+  def __init__(self, first=None):
+    debug("IN FRONTIER INIT.")
+    self.head = first
+    self.tail = self.head
+    if self.head:
+      self.head.cheaper = None
+      self.head.expense = None
+
+  def get(self):
+    retval = self.head
+    self.head = retval.expense
+    retval.expense = None
+    if self.head: self.head.cheaper = None
+    return retval
+
+  def empty(self):
+    return self.head == None
+
+  def update_queue(self, node):
+    """
+      If node is already in the queue, updates its position
+      on the assumption that it can only move to the front of
+      the queue.
+      If not already in the queue, node is inserted.
+    """
+    current = self.tail
+    if node.cheaper == None and node.expense == None:
+      if self.head == None:
+        # If empty, act specially.
+        self.head = node
+        self.tail = node
+        return
+      # insert in queue
+      if (node > current):
+        node.cheaper = current
+        current.expense = node
+        self.tail = node
+        return
+    else:
+      # Start from current position in queue.
+      current = node
+    # Iterate down in the queue until we reach the right spot.
+    while current.cheaper and node < current.cheaper:
+      current = current.cheaper
+    # Actually insert node into list.
+    if node != current:
+      debug(repr(node) + "; " + repr(current))
+      if (node == self.tail):
+        self.tail = node.cheaper
+      current.cheaper = node
+      node.cheaper = current.cheaper
+      node.expense = current
+    if node.cheaper: node.cheaper.expense = node
+    else:
+      self.head = node
 
 class Node(object):
   """
     A node object which links to the identifiers for all adjacent nodes.
   """
-  # Identifiers should be a Node object.
-  adj = {}
-  parent = None
-  g_cost = -1
-  h_cost = -1
 
   def __init__(self, x, y):
+    # Identifiers should be a Node object.
+    self.adj = set()
+    self.parent = None
+    # If in the frontier, this defines the next cheapest node.
+    self.cheaper = None
+    # If in the fronteir, this defines the next most expensive node.
+    self.expense = None
+    self.g_cost = -1
+    self.h_cost = -1
     self.clear()
     self.x = x
     self.y = y
 
   def add_neighbor(self, neighbor):
-    adj.insert(neighbor)
+    self.adj.add(neighbor)
 
   def rem_neighbor(self, neighbor):
-    adj.remove(neighbor)
+    self.adj.remove(neighbor)
 
   def dist(self, node):
     return math.sqrt((node.y - self.y) ** 2 + (node.x - self.x) ** 2)
@@ -31,15 +107,35 @@ class Node(object):
   def set_parent(self, parent):
     self.parent = parent
 
+  def set_g(self, g):
+    global frontier
+    self.g_cost = g
+    frontier.update_queue(self)
+
+  def set_h(self, h):
+    global frontier
+    self.h_cost = h
+    frontier.update_queue(self)
+
+  def __repr__(self):
+    x = repr(self.x)
+    y = repr(self.y)
+    cost = repr(self.g_cost + self.h_cost)
+    total = "(" + x + ", " + y + ")" + " " + cost
+    return total
+
   def __lt__(self, other):
+    #debug("Comparing: " + repr(self.g_cost + self.h_cost) + " < " + repr(other.g_cost + other.h_cost))
     return (self.g_cost + self.h_cost) < (other.g_cost + other.h_cost)
 
   def clear(self):
     # Temporary variables for current instance.
-    self.total_cost = float("inf")
     self.g_cost = float("inf")
+    self.h_cost = float("inf")
     self.complete = False
     self.parent = None
+    self.expense = None
+    self.cheaper = None
 
 class Map(object):
   """
@@ -51,7 +147,6 @@ class Map(object):
   nodelist = []
 
   def __init__(self, x, y, occupancy_arr):
-    # TODO: break out into getting sizes from map metadata.
     self.nodelist = []
     for i in xrange(x):
       self.nodelist.append([])
@@ -69,82 +164,152 @@ class Map(object):
           new_node.add_neighbor(self.nodelist[i][j - 1])
           self.nodelist[i][j - 1].add_neighbor(new_node)
         self.nodelist[i].append(new_node)
+    #debug(repr(self.nodelist))
 
   def get_sl_dist(start, goal):
     return math.sqrt((goal[1] - start[1]) ** 2 + (goal[0] - start[0]) ** 2)
 
   def clear(self):
-    for row in nodelist:
+    for row in self.nodelist:
       for node in row:
-        node.clear()
+        if node: node.clear()
 
-  def get_node(self, nodeid):
-    return nodelist[nodeid[0]][nodeid[1]]
+  def get_node(self, xy):
+    debug(repr(xy))
+    return self.nodelist[xy[0]][xy[1]]
 
 grid = None
+grid_res = None
 def convert_map(rosmap):
   """
     Takes a ros map message as in /map and converts it into a more
     useful representation in python.
     nav_msgs/OccupancyGrid
   """
-  grid = Map(rosmap.width, rosmap.height, rosmap.data)
+  global grid
+  global grid_res
+  debug("converting map")
+  grid = Map(rosmap.info.width, rosmap.info.height, rosmap.data)
+  debug("map converted")
   # TODO: Convert between absolute coordinates and map.
-  origin = rosmap.origin # Pose msg
-  res = rosmap.resolution
+  origin = rosmap.info.origin # Pose msg
+  grid_res = rosmap.info.resolution
+
+def get_grid_from_pose(pose):
+  """
+    Takes a ros Pose message and converts it to a grid coordinate.
+    Limitations:
+      -currently only accounts for resolution, not anything else.
+  """
+  x = pose.position.y / grid_res
+  y = pose.position.x / grid_res
+  return (int(x), int(y))
 
 def pub_path(path):
   """
     Takes a list of nodes and publishes the path to the appropriate topic.
   """
 
+def print_queue():
+  global frontier
+  node = frontier.tail
+  totalstr = ""
+  i = 0
+  while node:
+    i += 1
+    #totalstr += repr(node)
+    #totalstr += "; "
+    node = node.cheaper
+  #print totalstr
+  debug(repr(i))
+
 def do_a_star(grid, start, goal):
   # Insert standard algorithm (see class notes, etc.).
   # Return appropriate path.
-  closed = {}
-  frontier = PriorityQueue()
-  frontier.put(start)
+  global frontier
+  grid.clear()
+  frontier = PriorityQueue(start)
+  closed = set()
 
-  start.g_cost = 0
+  start.set_g(0)
   # Estimated total cost from start to goal through y.
-  start.f_cost = heuristic(start, goal)
+  start.set_h(heuristic(start, goal))
 
+  retval = False
   while not frontier.empty():
     current = frontier.get()
-    if current = goal:
-      return reconstruct_path(goal)
+    debug("Current: " + repr(current))
+    if current == goal:
+      retval = reconstruct_path(goal)
+      break
 
-    closed.insert(current)
-    for neighbor in current.adj
-      if neighbor in closed
+    closed.add(current)
+    for neighbor in current.adj:
+      debug("Neighbor: " + repr(neighbor))
+      print_queue()
+      if neighbor in closed:
         continue    # Ignore the neighbor which is already evaluated.
       tentative_g_score = current.g_cost + current.dist(neighbor)
-      if neighbor not in frontier  # Discover a new node
-        frontier.put(neighbor)
-      else if tentative_g_score >= neighbor.g_cost
+      #if neighbor.cheaper == None and neighbor.expense == None: # Discover a new node
+      neighbor.set_h(heuristic(neighbor, goal))
+      print_queue()
+      if tentative_g_score >= neighbor.g_cost:
         continue    # This is not a better path.
 
       # This path is the best until now. Record it!
+      #debug("Best Path!")
       neighbor.parent = current
-      neighbor.g_cost = tentative_g_score
+      neighbor.set_g(tentative_g_score)
 
-  return False
+  # Visualize DATA
+  global pub
+  occ_msg = OccupancyGrid()
+  occ_msg.info.resolution = 0.3
+  occ_msg.info.width = 37
+  occ_msg.info.height = 37
+  occ_msg.info.origin.orientation.w = 1
+  occ_data = [0] * (len(grid.nodelist) * len(grid.nodelist[0]))
+  occ_data[37 * start.x + start.y] = 100
+  occ_data[37 * goal.x + goal.y] = 100
+  for node in closed:
+    occ_data[37 * node.x + node.y] = node.h_cost + node.g_cost
+  occ_msg.data = occ_data
+  pub.publish(occ_msg)
+  rospy.sleep(rospy.Duration(10, 0))
+
+  return retval
+
+def do_stuff(empty):
+  debug(repr(do_a_star(grid, start, goal)))
 
 start = None
-def get_start(start):
+def get_start(start_pose):
+  global start
+  if grid: start = grid.get_node(get_grid_from_pose(start_pose.pose.pose))
+  debug(repr(start))
 
-def reconstruct_path(current)
-  total_path = [current]
+goal = None
+def get_goal(goal_pose):
+  global goal
+  if grid: goal = grid.get_node(get_grid_from_pose(goal_pose.pose))
+  debug(repr(goal))
+
+def reconstruct_path(current):
+  total_path = [(current.x, current.y)]
   while current.parent:
     current = current.parent
-    total_path.append(current)
+    total_path.append((current.x, current.y))
   return total_path
 
 def heuristic(start, goal):
   return start.dist(goal)
 
 if __name__ == '__main__':
+  global pub
   rospy.init_node('astar')
   rospy.Subscriber('/map', OccupancyGrid, convert_map, queue_size=10)
   rospy.Subscriber('/move_base_simple/goal', PoseStamped, get_goal, queue_size=10)
-  rospy.Subscriber('/initialpose', PoseStamped, get_start, queue_size=10)
+  rospy.Subscriber('/initialpose', PoseWithCovarianceStamped, get_start, queue_size=10)
+  rospy.Subscriber('/foobar', Empty, do_stuff, queue_size=1)
+  pub = rospy.Publisher('/closed_nodes', OccupancyGrid, queue_size=10)
+  rospy.spin()
