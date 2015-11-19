@@ -56,4 +56,4 @@ if __name__ == '__main__':
       print exc
     if path:
       path_pub.publish(path)
-      go_pub.publish(path.poses[-2])
+      if len(path.poses) >= 2: go_pub.publish(path.poses[-2])

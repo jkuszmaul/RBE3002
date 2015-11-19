@@ -319,7 +319,7 @@ def get_turn_cost(start, neighbor):
   if start_diff == next_diff:
     return 0
   else:
-    return 3
+    return .1
 
 def do_a_star(grid, start, goal):
   # Insert standard algorithm (see class notes, etc.).

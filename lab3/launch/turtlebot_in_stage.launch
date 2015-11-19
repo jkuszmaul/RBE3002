@@ -15,8 +15,8 @@
   <!-- Name of the map to use (without path nor extension) and initial position -->
   <arg name="map_file"       default=" $(env TURTLEBOT_STAGE_MAP_FILE)"/> <!-- robopark_plan -->
   <arg name="world_file"     default=" $(env TURTLEBOT_STAGE_WORLD_FILE)"/>
-  <arg name="initial_pose_x" default="1.0"/>
-  <arg name="initial_pose_y" default="2.0"/>
+  <arg name="initial_pose_x" default="10.0"/>
+  <arg name="initial_pose_y" default="10.0"/>
   <arg name="initial_pose_a" default="0.0"/>
 
   <param name="/use_sim_time" value="true"/>
@@ -84,4 +84,5 @@
   <!-- New NAvigation nodes -->
   <node name="astar" pkg="rbe3002_lab3" type="astar.py"  />
   <node name="run_astar" pkg="rbe3002_lab3" type="run_astar.py"  />
+  <node name="drive" pkg="rbe3002_lab3" type="drive.py"  />
 </launch>

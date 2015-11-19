@@ -1,0 +1,9 @@
+<launch>
+  <!--  **************** Visualisation ****************  -->
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find rbe3002_lab3)/rviz/rviz.rviz"/>
+
+  <!-- New NAvigation nodes -->
+  <node name="astar" pkg="rbe3002_lab3" type="astar.py"  />
+  <node name="run_astar" pkg="rbe3002_lab3" type="run_astar.py"  />
+  <node name="drive" pkg="rbe3002_lab3" type="drive.py"  />
+</launch>
