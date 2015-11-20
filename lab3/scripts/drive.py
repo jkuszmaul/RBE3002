@@ -4,6 +4,7 @@ import rospy, tf
 from kobuki_msgs.msg import BumperEvent
 from geometry_msgs.msg import Twist, PoseStamped
 import math
+from std_msgs.msg import Empty
 
 class SimplePose(object):
   """
@@ -33,6 +34,10 @@ def updatePose(event):
 def driveUpdate():
   global pose
   global goal
+  global stopped
+  if stopped:
+    drivePub(0, 0)
+    return
   if goal == None:
     return
 #  print "goal: ", goal
@@ -51,24 +56,31 @@ def driveUpdate():
   kP_lin = 0.4
   kP_ang = 1
 
-  lin_vel = kP_lin * goal_dist + 0.1
-  if lin_vel > 0.3: lin_vel = 0.3
-  if angle_error > angle_threshold:
+  max_lin = 0.1 if abs(angle_error) > math.pi / 4 else 0.3
+  lin_vel = kP_lin * goal_dist + 0.05
+  if lin_vel > max_lin: lin_vel = max_lin
+  if abs(angle_error) > angle_threshold:
     lin_vel = 0
 
   ang_vel = kP_ang * angle_error
-  if abs(ydiff) < 0.1 and abs(xdiff) < 0.1:
-    drivePub(0, 0)
-  else: drivePub(lin_vel, ang_vel)
+  if goal_dist < 0.1:
+    ang_vel = 0
+  drivePub(lin_vel, ang_vel)
 
 def goal_callback(event):
   global goal
+  global stopped
+  stopped = False
   goal = SimplePose()
   orst = event.pose.orientation
   orientation = [orst.x, orst.y, orst.z, orst.w]
   _, _, goal.t = tf.transformations.euler_from_quaternion(orientation)
   goal.x = event.pose.position.x
   goal.y = event.pose.position.y
+
+def stop_robot(event):
+  global stopped
+  stopped = True
 
 def drivePub(linear, angular):
   global vel_pub
@@ -84,11 +96,14 @@ if __name__ == '__main__':
   global odom_list
   global vel_pub
 
+  global stopped
+  stopped = False
   goal = None
   # Use this object to get the robot's Odometry
   odom_list = tf.TransformListener()
 
   rospy.Subscriber('/waypoint', PoseStamped, goal_callback, queue_size=10)
+  rospy.Subscriber('/done_navigate', Empty, stop_robot, queue_size=10)
   vel_pub = rospy.Publisher('/cmd_vel_mux/input/teleop', Twist, queue_size=100)
 
   rospy.sleep(rospy.Duration(1, 0))

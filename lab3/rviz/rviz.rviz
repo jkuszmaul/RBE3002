@@ -11,9 +11,10 @@ Panels:
         - /TF1/Tree1
         - /Map1
         - /Closed Nodes1
-        - /Closed Nodes1/Status1
         - /Path1
-        - /Path1/Status1
+        - /Local Costmap1
+        - /Waypoint1
+        - /Local Path1
       Splitter Ratio: 0.5
     Tree Height: 781
   - Class: rviz/Selection
@@ -263,6 +264,42 @@ Visualization Manager:
         Y: 0
         Z: 0
       Topic: /astar_continuous_path
+      Value: true
+    - Alpha: 0.4
+      Class: rviz/Map
+      Color Scheme: costmap
+      Draw Behind: true
+      Enabled: true
+      Name: Local Costmap
+      Topic: /move_base/local_costmap/costmap
+      Value: true
+    - Alpha: 1
+      Axes Length: 1
+      Axes Radius: 0.1
+      Class: rviz/Pose
+      Color: 255; 25; 0
+      Enabled: true
+      Head Length: 0.3
+      Head Radius: 0.1
+      Name: Waypoint
+      Shaft Length: 1
+      Shaft Radius: 0.05
+      Shape: Arrow
+      Topic: /waypoint
+      Value: true
+    - Alpha: 1
+      Buffer Length: 1
+      Class: rviz/Path
+      Color: 255; 0; 0
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.03
+      Name: Local Path
+      Offset:
+        X: 0
+        Y: 0
+        Z: 0
+      Topic: /local_astar_path
       Value: true
   Enabled: true
   Global Options:

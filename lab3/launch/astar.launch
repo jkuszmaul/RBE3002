@@ -1,0 +1,9 @@
+<launch>
+  <node name="astar" pkg="rbe3002_lab3" type="astar.py" output="screen" >
+    <param name="map_topic" value="/map" />
+    <param name="obstacle_expansion" value="true" />
+    <param name="service_name" value="astar" />
+    <param name="cost_out" value="/closed_nodes" />
+  </node>
+  <node name="run_astar" pkg="rbe3002_lab3" type="run_astar.py"  />
+</launch>

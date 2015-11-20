@@ -15,8 +15,8 @@
   <!-- Name of the map to use (without path nor extension) and initial position -->
   <arg name="map_file"       default=" $(env TURTLEBOT_STAGE_MAP_FILE)"/> <!-- robopark_plan -->
   <arg name="world_file"     default=" $(env TURTLEBOT_STAGE_WORLD_FILE)"/>
-  <arg name="initial_pose_x" default="10.0"/>
-  <arg name="initial_pose_y" default="10.0"/>
+  <arg name="initial_pose_x" default="1.0"/>
+  <arg name="initial_pose_y" default="2.0"/>
   <arg name="initial_pose_a" default="0.0"/>
 
   <param name="/use_sim_time" value="true"/>
@@ -54,16 +54,19 @@
   </node>
 
   <!-- Command Velocity multiplexer -->
-  <node pkg="nodelet" type="nodelet" name="mobile_base_nodelet_manager" args="manager"/>
+  <node pkg="nodelet" type="nodelet" name="mobile_base_nodelet_manager" args="manager" >
+    <remap from="/navigation_velocity_smoother/raw_cmd_vel" to="/foobar/go0dbye" />
+  </node>
   <node pkg="nodelet" type="nodelet" name="cmd_vel_mux" args="load yocs_cmd_vel_mux/CmdVelMuxNodelet mobile_base_nodelet_manager">
     <param name="yaml_cfg_file" value="$(find turtlebot_bringup)/param/mux.yaml"/>
     <remap from="cmd_vel_mux/output" to="mobile_base/commands/velocity"/>
   </node>
 
   <!--  ************** Navigation  ***************  -->
-  <!--
-  <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml"/>
-  -->
+  <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml">
+    <!-- Prevent it commanding the robot. -->
+    <remap from="/navigation_velocity_smoother/raw_cmd_vel" to="/foobar/good-bye" />
+  </include>
 
   <!--  ****** Maps *****  -->
   <node name="map_server" pkg="map_server" type="map_server" args="$(arg map_file)">
@@ -78,11 +81,13 @@
     <arg name="initial_pose_a" value="$(arg initial_pose_a)"/>
   </include>
 
-  <!--  **************** Visualisation ****************  -->
+  <include file="$(find rbe3002_lab3)/launch/turtlebot_real.launch" />
+  <!---
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find rbe3002_lab3)/rviz/rviz.rviz"/>
 
-  <!-- New NAvigation nodes -->
+  <!- New NAvigation nodes ->
   <node name="astar" pkg="rbe3002_lab3" type="astar.py"  />
   <node name="run_astar" pkg="rbe3002_lab3" type="run_astar.py"  />
   <node name="drive" pkg="rbe3002_lab3" type="drive.py"  />
+  -->
 </launch>

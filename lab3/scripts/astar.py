@@ -1,5 +1,7 @@
 #!/usr/bin/python
 import math
+import numpy
+import tf
 import rospy
 import inspect
 import time
@@ -92,7 +94,7 @@ class Node(object):
     A node object which links to the identifiers for all adjacent nodes.
   """
 
-  def __init__(self, x, y):
+  def __init__(self, x, y, cost=0):
     # Identifiers should be a Node object.
     self.adj = set()
     self.parent = None
@@ -105,6 +107,7 @@ class Node(object):
     self.clear()
     self.x = x
     self.y = y
+    self.cost = cost
 
   def add_neighbor(self, neighbor):
     self.adj.add(neighbor)
@@ -162,11 +165,12 @@ class Map(object):
     for i in xrange(x):
       self.nodelist.append([])
       for j in xrange(y):
-        occ = occupancy_arr[x * i + j]
-        if occ:
+        occ = occupancy_arr[y * i + j]
+        if occ >= 100 or occ == -1:
           self.nodelist[i].append(None)
           continue
-        new_node = Node(i, j)
+        cost = 1000 if occ == 99 else occ / 60.
+        new_node = Node(i, j, cost=cost)
         # Add neighbor nodes that already exist.
         up_left = True # Whether or not to go for the node to the up-left.
         up_right = True # Whether or not to go for the node to the up-right.
@@ -184,7 +188,7 @@ class Map(object):
           # don't cut corners
           up_left = False
         # Check to see of the node to the right exists:
-        if (occupancy_arr[x * i + j + 1] and (j + 1) < y) or (j + 1) >= y:
+        if ((j + 1) < y and occupancy_arr[y * i + j + 1]) or (j + 1) >= y:
           up_right = False
         if up_left and self.nodelist[i - 1][j - 1]:
           new_node.add_neighbor(self.nodelist[i - 1][j - 1])
@@ -221,12 +225,13 @@ def get_surround(data, node, dist, width, height):
   cells = []
   for i in range(startx, endx + 1):
     for j in range(starty, endy + 1):
-      if data[i * width + j]:
-        return 1
+      if data[i * width + j] == 100:
+        return 100
   return 0
 
 grid = None
 grid_res = None
+map_lock = False
 def convert_map(rosmap):
   """
     Takes a ros map message as in /map and converts it into a more
@@ -235,38 +240,78 @@ def convert_map(rosmap):
   """
   global grid
   global grid_res
+  global grid_frame, grid_transform
+  global map_lock
+  global tf_list
   debug("converting map")
   grid_res = rosmap.info.resolution
+
+  # Get map origin in coordinates of the '/map' tf frame.
+  grid_zero = rosmap.info.origin
+  grid_frame = rosmap.header.frame_id
+  grid_stamped = PoseStamped()
+  grid_stamped.pose = grid_zero
+  grid_stamped.header.frame_id = rosmap.header.frame_id
+  transform_pose = tf_list.transformPose('map', grid_stamped).pose
+  position = transform_pose.position
+  orientation = transform_pose.orientation
+  new_grid_transform = tf.transformations.quaternion_matrix(
+      [orientation.x, orientation.y, orientation.z, orientation.w])
+  new_grid_transform[0, 3] = position.x
+  new_grid_transform[1, 3] = position.y
+  new_grid_transform[2, 3] = position.z
+  #grid_zero_transform = numpy.array([[1, 0, 0, grid_zero.position.x],
+  #                                   [0, 1, 0, grid_zero.position.y],
+  #                                   [0, 0, 1, 0],
+  #                                   [0, 0, 0, 1]])
+  #grid_transform = numpy.dot(grid_transform, grid_zero_transform)
+
   # Go through and put clearance around the walls.
   data = rosmap.data
   new_data = []
-  diff = int((.23 / 2) / grid_res) + 1 # Add one to provide buffer
+  diff = int((.4 / 2) / grid_res) + 1 # Add one to provide buffer
   width = rosmap.info.width
   height = rosmap.info.height
-  for x in xrange(height):
-    for y in xrange(width):
-      new_data.append(get_surround(data, (x, y), diff, width, height))
-  grid = Map(rosmap.info.width, rosmap.info.height, new_data)
+  if rospy.get_param('~obstacle_expansion', True):
+    for x in xrange(height):
+      for y in xrange(width):
+        new_data.append(get_surround(data, (x, y), diff, width, height))
+  else: new_data = data
+  new_grid = Map(rosmap.info.width, rosmap.info.height, new_data)
+
+  # Perform actual update of grid.
+  if map_lock:
+    while map_lock: continue
+  map_lock = True
+  grid_transform = new_grid_transform
+  grid = new_grid
+  map_lock = False
+
+
   debug("map converted")
   # TODO: Convert between absolute coordinates and map.
   origin = rosmap.info.origin # Pose msg
 
 def get_grid_from_pose(pose):
   """
-    Takes a ros Pose message and converts it to a grid coordinate.
-    Limitations:
-      -currently only accounts for resolution, not anything else.
+    Takes a ros PoseStamped message and converts it to a grid coordinate.
   """
-  x = pose.position.y / grid_res
-  y = pose.position.x / grid_res
-  return (int(x), int(y))
+  global tf_list, grid_frame, grid_transform
+  pose = pose.pose.position
+  pose_vec = numpy.array([[pose.x],[pose.y],[pose.z],[1]])
+  pose = numpy.dot(numpy.linalg.inv(grid_transform), pose_vec)
+  x = pose[0, 0] / grid_res
+  y = pose[1, 0] / grid_res
+  return (int(y), int(x))
 
 def get_waypoints(path):
   """
     Simplify a path down into just the turns.
   """
+  global grid_res
   if len(path) < 2:
     return path
+  max_dist = 1.5
   waypoints = [path[0]]
   cur = path[1]
   prev_diff = (cur[0] - path[0][0], cur[1] - path[0][1])
@@ -274,7 +319,9 @@ def get_waypoints(path):
     cur = path[i]
     new = path[i + 1]
     diff = (new[0] - cur[0], new[1] - cur[1])
-    if diff != prev_diff:
+    dist = math.sqrt((cur[0] - waypoints[-1][0]) ** 2 +
+                     (cur[1] - waypoints[-1][1]) ** 2) * grid_res
+    if diff != prev_diff or dist > max_dist:
       waypoints.append(cur)
     prev_diff = diff
 
@@ -286,11 +333,12 @@ def pub_path(path):
     Takes a list of nodes and publishes the path to the appropriate topic.
   """
   global path_pub
+  global grid_res, grid_frame
   msg = Path()
-  msg.header.frame_id = "map"
+  msg.header.frame_id = grid_frame
   for pair in path:
     pose = PoseStamped()
-    pose.header.frame_id = "map"
+    pose.header.frame_id = grid_frame
     pose.pose.orientation.w = 1
     pose.pose.position.x = (pair[1] + 0.5) * grid_res
     pose.pose.position.y = (pair[0] + 0.5) * grid_res
@@ -318,8 +366,10 @@ def get_turn_cost(start, neighbor):
   next_diff = (neighbor.x - start.x, neighbor.y - start.y)
   if start_diff == next_diff:
     return 0
+  elif start_diff[0] == next_diff[0] or start_diff[1] == next_diff[1]:
+    return 1
   else:
-    return .1
+    return 2
 
 def do_a_star(grid, start, goal):
   # Insert standard algorithm (see class notes, etc.).
@@ -350,7 +400,8 @@ def do_a_star(grid, start, goal):
       #print_queue()
       if neighbor in closed:
         continue    # Ignore the neighbor which is already evaluated.
-      tentative_g_score = current.g_cost + current.dist(neighbor) + get_turn_cost(current, neighbor)
+      tentative_g_score = (current.g_cost + current.dist(neighbor)
+          + get_turn_cost(current, neighbor) + neighbor.cost)
       #if neighbor.cheaper == None and neighbor.expense == None: # Discover a new node
       neighbor.set_h(heuristic(neighbor, goal))
       #print_queue()
@@ -371,11 +422,19 @@ def do_a_star(grid, start, goal):
 def viz_data(grid, closed):
   # Visualize DATA
   global pub
+  global grid_res, grid_transform
   occ_msg = OccupancyGrid()
   occ_msg.info.resolution = grid_res
   occ_msg.info.width = len(grid.nodelist)
   occ_msg.info.height = len(grid.nodelist[0])
-  occ_msg.info.origin.orientation.w = 1
+  occ_msg.header.frame_id = "map"
+  occ_msg.info.origin.position.x = grid_transform[0, 3]
+  occ_msg.info.origin.position.y = grid_transform[1, 3]
+  quaternion = tf.transformations.quaternion_from_matrix(grid_transform)
+  occ_msg.info.origin.orientation.x = quaternion[0]
+  occ_msg.info.origin.orientation.y = quaternion[1]
+  occ_msg.info.origin.orientation.z = quaternion[2]
+  occ_msg.info.origin.orientation.w = quaternion[3]
   occ_data = [0] * (occ_msg.info.width * occ_msg.info.height)
   width = occ_msg.info.width
   height = occ_msg.info.height
@@ -392,39 +451,35 @@ def viz_data(grid, closed):
   occ_msg.data = occ_data
   pub.publish(occ_msg)
 
-
-def do_stuff(empty):
-  debug(repr(do_a_star(grid, start, goal)))
-
 def astar_serv(info):
-  start = info.start
-  if grid: start = grid.get_node(get_grid_from_pose(start.pose))
-  goal = info.goal
-  if grid: goal = grid.get_node(get_grid_from_pose(goal.pose))
-  path = get_waypoints(do_a_star(grid, start, goal))
+  global tf_list, grid_transform
+  global map_lock
+  while map_lock: continue
+  while not grid: continue
+  map_lock = True
+  try:
+    start = get_grid_from_pose(info.start)
+    goal = get_grid_from_pose(info.goal)
+    if grid: start = grid.get_node(start)
+    if grid: goal = grid.get_node(goal)
+    path = get_waypoints(do_a_star(grid, start, goal))
+  finally:
+    map_lock = False
   msg = Path()
   msg.header.frame_id = "map"
   for pair in path:
     pose = PoseStamped()
     pose.header.frame_id = "map"
     pose.pose.orientation.w = 1
-    pose.pose.position.x = (pair[1] + 0.5) * grid_res
-    pose.pose.position.y = (pair[0] + 0.5) * grid_res
+    pos_vec = numpy.array([[(pair[1] + 0.5) * grid_res],
+                           [(pair[0] + 0.5) * grid_res],
+                           [0],
+                           [1]])
+    pos_vec = numpy.dot(grid_transform, pos_vec)
+    pose.pose.position.x = pos_vec[0]
+    pose.pose.position.y = pos_vec[1]
     msg.poses.append(pose)
   return msg
-
-start = None
-def get_start(start_pose):
-  global start
-  if grid: start = grid.get_node(get_grid_from_pose(start_pose.pose.pose))
-  debug(repr(start))
-
-goal = None
-def get_goal(goal_pose):
-  global goal
-  if grid: goal = grid.get_node(get_grid_from_pose(goal_pose.pose))
-  debug(repr(goal))
-  #do_stuff(1)
 
 def reconstruct_path(current):
   total_path = [(current.x, current.y)]
@@ -439,12 +494,14 @@ def heuristic(start, goal):
 if __name__ == '__main__':
   global pub
   global path_pub
+  global tf_list
   rospy.init_node('astar')
-  rospy.Subscriber('/map', OccupancyGrid, convert_map, queue_size=10)
-  rospy.Subscriber('/move_base_simple/goal', PoseStamped, get_goal, queue_size=10)
-  rospy.Subscriber('/initialpose', PoseWithCovarianceStamped, get_start, queue_size=10)
-  rospy.Subscriber('/foobar', Empty, do_stuff, queue_size=1)
-  pub = rospy.Publisher('/closed_nodes', OccupancyGrid, queue_size=10)
-  path_pub = rospy.Publisher('/astar_path', Path, queue_size=10)
-  path_serv = rospy.Service('astar', GetPlan, astar_serv)
+  map_topic = rospy.get_param('~map_topic', '/map')
+  rospy.Subscriber(map_topic, OccupancyGrid, convert_map, queue_size=1)
+  tf_list = tf.TransformListener()
+  cost_out_topic = rospy.get_param('~cost_out', '/closed_nodes')
+  pub = rospy.Publisher(cost_out_topic, OccupancyGrid, queue_size=10)
+  path_pub = rospy.Publisher('/astar_path', Path, queue_size=10) # unused
+  service_name = rospy.get_param('~service_name', 'astar')
+  path_serv = rospy.Service(service_name, GetPlan, astar_serv)
   rospy.spin()
