@@ -52,11 +52,11 @@ def driveUpdate():
 #  print "angle error: ", angle_error, "goal dist: ", goal_dist
 
   # Tuning constants
-  angle_threshold = math.pi / 8
+  angle_threshold = math.pi / 3
   kP_lin = 0.4
   kP_ang = 1
 
-  max_lin = 0.1 if abs(angle_error) > math.pi / 4 else 0.3
+  max_lin = 0.1 if abs(angle_error) > math.pi / 6 else 0.3
   lin_vel = kP_lin * goal_dist + 0.05
   if lin_vel > max_lin: lin_vel = max_lin
   if abs(angle_error) > angle_threshold:

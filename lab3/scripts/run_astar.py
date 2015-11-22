@@ -58,7 +58,7 @@ if __name__ == '__main__':
   service_name = rospy.get_param("~service_name", "astar")
   rospy.wait_for_service(service_name)
   do_astar = rospy.ServiceProxy(service_name, GetPlan)
-  goal_name = rospy.get_param("~goal_name", "/move_base_simple/goal")
+  goal_name = rospy.get_param("~goal_name", "/astar_goal")
   rospy.Subscriber(goal_name, PoseStamped, get_goal, queue_size=10)
   path_pub_name = rospy.get_param("~path_pub", "/astar_continuous_path")
   path_pub = rospy.Publisher(path_pub_name, Path, queue_size=10)
@@ -79,7 +79,7 @@ if __name__ == '__main__':
     try:
       dist = pose_dist(pose, goal)
       print dist
-      if dist > 0.3 or goal_name != "/move_base_simple/goal":
+      if dist > 0.3 or goal_name != "/astar_goal":
         path = do_astar(pose, goal, 0.0).plan
       else:
         stop_pub.publish(Empty())

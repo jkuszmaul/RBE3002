@@ -162,10 +162,10 @@ class Map(object):
 
   def __init__(self, x, y, occupancy_arr):
     self.nodelist = []
-    for i in xrange(x):
+    for i in xrange(y):
       self.nodelist.append([])
-      for j in xrange(y):
-        occ = occupancy_arr[y * i + j]
+      for j in xrange(x):
+        occ = occupancy_arr[x * i + j]
         if occ >= 100 or occ == -1:
           self.nodelist[i].append(None)
           continue
@@ -188,7 +188,7 @@ class Map(object):
           # don't cut corners
           up_left = False
         # Check to see of the node to the right exists:
-        if ((j + 1) < y and occupancy_arr[y * i + j + 1]) or (j + 1) >= y:
+        if ((j + 1) < x and occupancy_arr[x * i + j + 1]) or (j + 1) >= x:
           up_right = False
         if up_left and self.nodelist[i - 1][j - 1]:
           new_node.add_neighbor(self.nodelist[i - 1][j - 1])
@@ -214,19 +214,28 @@ class Map(object):
 def get_surround(data, node, dist, width, height):
   x = node[0]
   y = node[1]
+  #width, height = height, width
+  if data[y * width + x]:
+    return data[y * width + x]
   startx = x - dist
   startx = 0 if startx < 0 else startx
   endx = x + dist
-  endx = height-1 if endx >= height else endx
+  endx = width-1 if endx >= width else endx
   starty = y - dist
   starty = 0 if starty < 0 else starty
   endy = y + dist
-  endy = width-1 if endy >= width else endy
+  endy = height-1 if endy >= height else endy
   cells = []
-  for i in range(startx, endx + 1):
-    for j in range(starty, endy + 1):
-      if data[i * width + j] == 100:
+  for i in range(starty, endy + 1):
+    for j in range(startx, endx + 1):
+      val = data[i * width + j]
+      if val == 100:
         return 100
+      #if val > 0:#data[i * width + j]:# > 0:
+      #  return val
+      #if val == -1:
+      #  if i == x and j == y:
+      #    return -1
   return 0
 
 grid = None
@@ -243,6 +252,7 @@ def convert_map(rosmap):
   global grid_frame, grid_transform
   global map_lock
   global tf_list
+  global pub
   debug("converting map")
   grid_res = rosmap.info.resolution
 
@@ -269,14 +279,19 @@ def convert_map(rosmap):
   # Go through and put clearance around the walls.
   data = rosmap.data
   new_data = []
-  diff = int((.4 / 2) / grid_res) + 1 # Add one to provide buffer
+  diff = 3#int((.4 / 2) / grid_res) + 1 # Add one to provide buffer
   width = rosmap.info.width
   height = rosmap.info.height
   if rospy.get_param('~obstacle_expansion', True):
-    for x in xrange(height):
-      for y in xrange(width):
+    print "EXPANDING OBSTACLES"
+    for y in xrange(height):
+      for x in xrange(width):
         new_data.append(get_surround(data, (x, y), diff, width, height))
+    print "DONE!!!!!!!!!!!!!!!!!"
   else: new_data = data
+  #rosmap.data = new_data
+  #rospy.sleep(10.)
+  #pub.publish(rosmap)
   new_grid = Map(rosmap.info.width, rosmap.info.height, new_data)
 
   # Perform actual update of grid.

@@ -16,9 +16,9 @@
     <param name="cost_out" value="/local_closed_nodes" />
   </node>
   <node name="run_astar" pkg="rbe3002_lab3" type="run_astar.py" output="screen">
-    <!--
+    <!---
     <param name="go_pub" value="/waypoint" />
-  -->
+ -->
   </node>
   <node name="local_run_astar" pkg="rbe3002_lab3" type="run_astar.py" output="screen" >
     <param name="service_name" value="local_astar" />

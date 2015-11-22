@@ -11,5 +11,6 @@
 
   <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml">
     <remap from="cmd_vel_mux/input" to="/foobar/good-bye" />
+    <remap from="/navigation_velocity_smoother/raw_cmd_vel" to="/foobar/go0dbye" />
   </include>
 </launch>
