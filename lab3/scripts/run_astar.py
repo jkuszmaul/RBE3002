@@ -7,6 +7,7 @@ import tf
 from nav_msgs.msg import Path, OccupancyGrid
 from nav_msgs.srv import GetPlan
 from geometry_msgs.msg import Twist, Pose, PoseStamped, PoseWithCovarianceStamped
+from move_base_msgs.msg import MoveBaseActionGoal
 from std_msgs.msg import Empty
 
 def updatePose(event):
@@ -64,6 +65,7 @@ if __name__ == '__main__':
   path_pub = rospy.Publisher(path_pub_name, Path, queue_size=10)
   go_pub_name = rospy.get_param("~go_pub", "/waypoint_global")
   go_pub = rospy.Publisher(go_pub_name, PoseStamped, queue_size=10)
+  #go_pub = rospy.Publisher(go_pub_name, MoveBaseActionGoal, queue_size=10)
   stop_pub = rospy.Publisher("/done_navigate", Empty, queue_size=10)
 
   rospy.sleep(rospy.Duration(1, 0))
@@ -90,6 +92,7 @@ if __name__ == '__main__':
       # Iterate through path and find the two closest nodes to pose that pose
       # is between and then return the second of them.
       if len(path.poses) > 2:
+        # go_pub.publish(path.poses[-1])
         published = False
         for point in reversed(path.poses):
           if pose_dist(point, pose) > 1.5:
@@ -97,17 +100,21 @@ if __name__ == '__main__':
           elif pose_dist(point, pose) < 0.3:
             continue
           if between(path.poses[-1], pose, point):
+            orient = path.poses[-1].pose.orientation
+            quat = [orient.x, orient.y, orient.z, orient.w]
+            print tf.transformations.euler_from_quaternion(quat)
             published = True
             go_pub.publish(point)
             break
         if not published:
           for point in reversed(path.poses[:-1]):
             dist = pose_dist(point, pose)
-            print " ", dist
             if dist > 0.7:
+              orient = path.poses[-1].pose.orientation
+              quat = [orient.x, orient.y, orient.z, orient.w]
+              print tf.transformations.euler_from_quaternion(quat)
               go_pub.publish(point)
               published = True
-              print "PUBLISHING~~~~"
               break
           if not published: go_pub.publish(path.poses[0])
       elif len(path.poses) == 2: go_pub.publish(path.poses[0])

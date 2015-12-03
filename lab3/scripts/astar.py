@@ -287,7 +287,6 @@ def convert_map(rosmap):
     for y in xrange(height):
       for x in xrange(width):
         new_data.append(get_surround(data, (x, y), diff, width, height))
-    print "DONE!!!!!!!!!!!!!!!!!"
   else: new_data = data
   #rosmap.data = new_data
   #rospy.sleep(10.)
@@ -482,10 +481,18 @@ def astar_serv(info):
     map_lock = False
   msg = Path()
   msg.header.frame_id = "map"
-  for pair in path:
+  for i in xrange(len(path)):
+    pair = path[i]
+    next_pair = (0, 0)
+    if i - 1 >= 0: next_pair = path[i - 1]
     pose = PoseStamped()
     pose.header.frame_id = "map"
-    pose.pose.orientation.w = 1
+    pos_theta = math.atan2(next_pair[0] - pair[0], next_pair[1] - pair[1])
+    quat = tf.transformations.quaternion_from_euler(0, 0, pos_theta)
+    pose.pose.orientation.x = quat[0]
+    pose.pose.orientation.y = quat[1]
+    pose.pose.orientation.z = quat[2]
+    pose.pose.orientation.w = quat[3]
     pos_vec = numpy.array([[(pair[1] + 0.5) * grid_res],
                            [(pair[0] + 0.5) * grid_res],
                            [0],

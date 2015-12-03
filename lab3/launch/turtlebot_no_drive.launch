@@ -9,14 +9,18 @@
     <param name="service_name" value="astar" />
     <param name="cost_out" value="/closed_nodes" />
   </node>
+  <!---
   <node name="local_astar" pkg="rbe3002_lab3" type="astar.py" output="screen" >
     <param name="map_topic" value="/move_base/local_costmap/costmap" />
     <param name="obstacle_expansion" value="false" />
     <param name="service_name" value="local_astar" />
     <param name="cost_out" value="/local_closed_nodes" />
   </node>
+  -->
   <node name="run_astar" pkg="rbe3002_lab3" type="run_astar.py" output="screen">
+    <param name="go_pub" value="/move_base_simple/goal" />
   </node>
+  <!---
   <node name="local_run_astar" pkg="rbe3002_lab3" type="run_astar.py" output="screen" >
     <param name="service_name" value="local_astar" />
     <param name="goal_name" value="/waypoint_global" />
@@ -24,6 +28,7 @@
     <param name="go_pub" value="/waypoint" />
   </node>
   <node name="drive" pkg="rbe3002_lab3" type="drive.py" />
+  -->
 
 
 </launch>

@@ -55,7 +55,9 @@
 
   <!-- Command Velocity multiplexer -->
   <node pkg="nodelet" type="nodelet" name="mobile_base_nodelet_manager" args="manager" >
+    <!---
     <remap from="/navigation_velocity_smoother/raw_cmd_vel" to="/foobar/go0dbye" />
+    -->
   </node>
   <node pkg="nodelet" type="nodelet" name="cmd_vel_mux" args="load yocs_cmd_vel_mux/CmdVelMuxNodelet mobile_base_nodelet_manager">
     <param name="yaml_cfg_file" value="$(find turtlebot_bringup)/param/mux.yaml"/>
@@ -64,8 +66,9 @@
 
   <!--  ************** Navigation  ***************  -->
   <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml">
-    <!-- Prevent it commanding the robot. -->
+    <!-- Prevent it commanding the robot.
     <remap from="/navigation_velocity_smoother/raw_cmd_vel" to="/foobar/good-bye" />
+-->
   </include>
 
   <!--  ****** Maps *****  -->
