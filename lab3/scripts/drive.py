@@ -1,6 +1,7 @@
 #!/usr/bin/python
 
 import rospy, tf
+import numpy
 from kobuki_msgs.msg import BumperEvent
 from geometry_msgs.msg import Twist, PoseStamped
 import math
@@ -36,7 +37,7 @@ def driveUpdate():
   global goal
   global stopped
   if stopped:
-    drivePub(0, 0)
+    drivePub(0, 0.3)
     return
   if goal == None:
     return
@@ -63,9 +64,15 @@ def driveUpdate():
     lin_vel = 0
 
   ang_vel = kP_ang * angle_error
-  if goal_dist < 0.1:
-    ang_vel = 0
-  drivePub(lin_vel, ang_vel)
+  ang_vel = numpy.clip(ang_vel, -0.5, 0.5)
+  #if goal_dist < 0.1:
+  #  ang_vel = 0
+  print "Pre-Driving"
+  if abs(lin_vel) < 0.25:# and abs(ang_vel) < 0.05:
+    drivePub(0, 0.3 * (1 if ang_vel > 0 else -1))
+  else:
+    print "Driving"
+    drivePub(lin_vel, ang_vel)
 
 def goal_callback(event):
   global goal
@@ -107,6 +114,13 @@ if __name__ == '__main__':
   vel_pub = rospy.Publisher('/cmd_vel_mux/input/teleop', Twist, queue_size=100)
 
   rospy.sleep(rospy.Duration(1, 0))
+
+  # Do full circle spin.
+  for _ in xrange(700):
+    drivePub(0, 0.3)
+    rospy.sleep(.05)
+    if rospy.is_shutdown():
+      break
   print "Ready!!"
 
   #make the robot keep doing something...

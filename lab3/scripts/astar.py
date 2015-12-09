@@ -1,5 +1,6 @@
 #!/usr/bin/python
 import math
+import traceback
 import numpy
 import tf
 import rospy
@@ -10,12 +11,12 @@ from nav_msgs.srv import GetPlan
 from geometry_msgs.msg import Twist, Pose, PoseStamped, PoseWithCovarianceStamped
 from std_msgs.msg import Empty
 
-def debug(string):
+def debug(string, disabled=True):
   """
     Prints the name of the calling function and the line on which this was
     called, along with whatever string is passed.
   """
-  return
+  if disabled: return
   func = inspect.stack()[1]
   func_name = func[3]
   func_line = repr(func[2])
@@ -166,10 +167,10 @@ class Map(object):
       self.nodelist.append([])
       for j in xrange(x):
         occ = occupancy_arr[x * i + j]
-        if occ >= 100 or occ == -1:
+        if occ == 100 or occ == -1:
           self.nodelist[i].append(None)
           continue
-        cost = 1000 if occ == 99 else occ / 60.
+        cost = 1000 if occ == 99 else occ / 10.
         new_node = Node(i, j, cost=cost)
         # Add neighbor nodes that already exist.
         up_left = True # Whether or not to go for the node to the up-left.
@@ -279,7 +280,7 @@ def convert_map(rosmap):
   # Go through and put clearance around the walls.
   data = rosmap.data
   new_data = []
-  diff = 3#int((.4 / 2) / grid_res) + 1 # Add one to provide buffer
+  diff = 4#int((.4 / 2) / grid_res) + 1 # Add one to provide buffer
   width = rosmap.info.width
   height = rosmap.info.height
   if rospy.get_param('~obstacle_expansion', True):
@@ -388,6 +389,8 @@ def get_turn_cost(start, neighbor):
 def do_a_star(grid, start, goal):
   # Insert standard algorithm (see class notes, etc.).
   # Return appropriate path.
+  if goal == None:
+    return []
   if start == goal:
     return [(start.x, start.y)]
   global frontier
@@ -399,7 +402,7 @@ def do_a_star(grid, start, goal):
   # Estimated total cost from start to goal through y.
   start.set_h(heuristic(start, goal))
 
-  retval = False
+  retval = []
   while not frontier.empty():
     current = frontier.get()
     #debug("Current: " + repr(current))
@@ -471,12 +474,21 @@ def astar_serv(info):
   while map_lock: continue
   while not grid: continue
   map_lock = True
+  path = []
+  start, goal = None, None
   try:
     start = get_grid_from_pose(info.start)
     goal = get_grid_from_pose(info.goal)
     if grid: start = grid.get_node(start)
     if grid: goal = grid.get_node(goal)
-    path = get_waypoints(do_a_star(grid, start, goal))
+    print "Got start/goal:", start, goal
+  except Exception as exc:
+    print exc
+    traceback.print_exc()
+  try:
+    if start and goal:
+      print "Doing Calculations!"
+      path = get_waypoints(do_a_star(grid, start, goal))
   finally:
     map_lock = False
   msg = Path()

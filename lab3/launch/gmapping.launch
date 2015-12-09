@@ -7,7 +7,8 @@
     <arg name="scan_topic" value="/scan" />
   </include>
 
-  <include file="$(find turtlebot_navigation)/launch/includes/gmapping.launch.xml"/>
+  <include file="$(find rbe3002_lab3)/launch/include/gmapping.launch.xml">
+  </include>
 
   <include file="$(find turtlebot_navigation)/launch/includes/move_base.launch.xml">
     <remap from="cmd_vel_mux/input" to="/foobar/good-bye" />

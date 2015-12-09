@@ -1,7 +1,9 @@
 <launch>
   <!--  **************** Visualisation ****************  -->
+  <!--
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find rbe3002_lab3)/rviz/rviz.rviz"/>
 
+-->
   <!-- New NAvigation nodes -->
   <node name="astar" pkg="rbe3002_lab3" type="astar.py" output="screen" >
     <param name="map_topic" value="/map" />
@@ -18,8 +20,11 @@
   </node>
   -->
   <node name="run_astar" pkg="rbe3002_lab3" type="run_astar.py" output="screen">
+    <param name="goal_set" value="/frontier_path" />
     <param name="go_pub" value="/move_base_simple/goal" />
   </node>
+
+  <node name="frontier" pkg="rbe3002_lab3" type="frontier.py" />
   <!---
   <node name="local_run_astar" pkg="rbe3002_lab3" type="run_astar.py" output="screen" >
     <param name="service_name" value="local_astar" />
