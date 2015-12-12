@@ -4,6 +4,7 @@ import rospy
 import inspect
 import time
 import tf
+import sys
 from nav_msgs.msg import Path, OccupancyGrid
 from nav_msgs.srv import GetPlan
 from geometry_msgs.msg import Twist, Pose, PoseStamped, PoseWithCovarianceStamped
@@ -59,7 +60,8 @@ def get_goal_set(goal_msg):
   # This sort works because the individual tuples, when compared, will first
   # compare by distance and only compare the goal objects as a tie-breaker.
   if len(goal_list) == 0:
-    goal_blacklist = []
+    sys.exit()
+    #goal_blacklist = []
   goal_list.sort()
   print "Got new set of goals."
 
@@ -139,6 +141,9 @@ if __name__ == '__main__':
             if new_goal:
               full_goal = goal_list[0]
               goal = goal_list[0][1]
+        if len(goal_list) == 0:
+          print "DDDDDOOOOOOOOOOOOOOOOOONNNNNNNNNEEEEEEEEEEEEE"
+          sys.exit()
         dist = pose_dist(pose, goal)
         print dist
         if dist > 0.3 or goal_name != "/astar_goal":

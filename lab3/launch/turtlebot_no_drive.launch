@@ -9,7 +9,7 @@
     <param name="map_topic" value="/map" />
     <param name="obstacle_expansion" value="true" />
     <param name="service_name" value="astar" />
-    <param name="cost_out" value="/closed_nodes" />
+    <param name="cost_out" value="/foobar" />
   </node>
   <!---
   <node name="local_astar" pkg="rbe3002_lab3" type="astar.py" output="screen" >
@@ -19,9 +19,8 @@
     <param name="cost_out" value="/local_closed_nodes" />
   </node>
   -->
-  <node name="run_astar" pkg="rbe3002_lab3" type="run_astar.py" output="screen">
+  <node name="run_astar" pkg="rbe3002_lab3" type="run_move_base.py" output="screen">
     <param name="goal_set" value="/frontier_path" />
-    <param name="go_pub" value="/move_base_simple/goal" />
   </node>
 
   <node name="frontier" pkg="rbe3002_lab3" type="frontier.py" />

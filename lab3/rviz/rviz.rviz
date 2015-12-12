@@ -248,10 +248,10 @@ Visualization Manager:
       Class: rviz/Map
       Color Scheme: costmap
       Draw Behind: false
-      Enabled: true
+      Enabled: false
       Name: Closed Nodes
       Topic: /closed_nodes
-      Value: true
+      Value: false
     - Alpha: 1
       Buffer Length: 1
       Class: rviz/Path
@@ -286,7 +286,7 @@ Visualization Manager:
       Shaft Length: 1
       Shaft Radius: 0.05
       Shape: Arrow
-      Topic: /move_base_simple/goal
+      Topic: /goal_for_display
       Value: true
     - Alpha: 1
       Buffer Length: 1
@@ -402,5 +402,5 @@ Window Geometry:
   Views:
     collapsed: false
   Width: 1600
-  X: -9
-  Y: 19
+  X: 0
+  Y: 27

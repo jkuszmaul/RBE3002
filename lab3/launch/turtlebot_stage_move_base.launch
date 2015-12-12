@@ -35,7 +35,6 @@
         Args:
           -g : run in headless mode.
   -->
-  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find rbe3002_lab3)/rviz/rviz.rviz"/>
   <node pkg="stage_ros" type="stageros" name="stageros" args="$(arg world_file)">
     <param name="base_watchdog_timeout" value="0.5"/>
     <remap from="odom" to="odom"/>
@@ -87,11 +86,12 @@
   </include>
   -->
 
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find rbe3002_lab3)/rviz/rviz.rviz"/>
   <include file="$(find rbe3002_lab3)/launch/include/gmapping.launch.xml" >
     <arg name="scan_topic" value="/scan" />
   </include>
 
-  <include file="$(find rbe3002_lab3)/launch/turtlebot_real.launch" />
+  <include file="$(find rbe3002_lab3)/launch/turtlebot_no_drive.launch" />
   <!---
   <node name="rviz" pkg="rviz" type="rviz" args="-d $(find rbe3002_lab3)/rviz/rviz.rviz"/>
 
