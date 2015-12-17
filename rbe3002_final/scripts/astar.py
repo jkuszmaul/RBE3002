@@ -432,7 +432,6 @@ def do_a_star(grid, start, goal):
 
   viz_data(grid, closed)
   if retval: pub_path(get_waypoints(retval))
-  viz_data(grid, closed)
 
   return retval
 
